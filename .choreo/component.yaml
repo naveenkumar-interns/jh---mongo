@@ -1,0 +1,6 @@
+schemaVersion: 1.0
+endpoints:
+  - name: flask-service
+    service:
+      port: 5000  # Change this if your Flask app uses a different port
+    type: REST
