@@ -8,7 +8,10 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 import pymongo
-from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_nomic import NomicEmbeddings
+# from langchain_mistralai import MistralAIEmbeddings
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from typing import List
 
 client = pymongo.MongoClient("mongodb+srv://jsckson_store:jsckson_store@cluster0.9a981.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
@@ -36,9 +39,12 @@ memory = ConversationBufferWindowMemory(return_messages=True, k=2)
 
 
 def generate_embedding(text: str) -> List[float]:
-  embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-  response = embeddings.embed_query(text)
-  return response
+#   embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5", nomic_api_key=os.getenv("NOMIC_AI_APIKEY"))
+    # embeddings = MistralAIEmbeddings(model="mistral-embed", api_key=os.getenv("MISTRAL_AI_APIKEY"))
+    embeddings = HuggingFaceInferenceAPIEmbeddings(api_key=os.getenv("hf_token"), model_name="sentence-transformers/all-MiniLM-l6-v2")
+    response = embeddings.embed_query(text)
+    return response
 
 
 def get_keywords(input_text):
