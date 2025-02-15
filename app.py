@@ -112,7 +112,7 @@ def get_product_search(query):
         "queryVector": generate_embedding(query),
         "path": "embeddings",
         "numCandidates": 100,
-        "limit": 4,
+        "limit": 8,
         # "index": "vector_search_index",
         "index": "vx",
         }}
