@@ -8,9 +8,6 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 import pymongo
-# from langchain_huggingface import HuggingFaceEmbeddings
-# from langchain_nomic import NomicEmbeddings
-# from langchain_mistralai import MistralAIEmbeddings
 from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from typing import List
 
@@ -34,17 +31,48 @@ llm = ChatGoogleGenerativeAI(
 )
 
 keywords = ""
+wordings = ""
 
 memory = ConversationBufferWindowMemory(return_messages=True, k=2)
 
 
+embedding_cache ={}
+
 def generate_embedding(text: str) -> List[float]:
+    if text in embedding_cache:
+        return embedding_cache[text]
+    print(type(text))
 #   embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     # embeddings = NomicEmbeddings(model="nomic-embed-text-v1.5", nomic_api_key=os.getenv("NOMIC_AI_APIKEY"))
     # embeddings = MistralAIEmbeddings(model="mistral-embed", api_key=os.getenv("MISTRAL_AI_APIKEY"))
     embeddings = HuggingFaceInferenceAPIEmbeddings(api_key=os.getenv("hf_token"), model_name="sentence-transformers/all-MiniLM-l6-v2")
     response = embeddings.embed_query(text)
+    embedding_cache[text]=response
     return response
+
+
+def user_intent(text):
+    try:
+        prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """you are helpful assistant that helps to analyze the list of keywords and provide a user intention of which product and its feature he is searching for.
+        output should be line of words , that is best for vector search.
+        note important: Avoid using technical formatting like new line symbols, markdown symbols *, _, etc., or bullet points.
+        """,
+    ),
+    (
+        "human",
+        "{input}"
+    ),
+])
+        chain = prompt | llm
+        response = chain.invoke({"input": text})
+        return response.content
+        
+    except Exception as e:
+        print(f"Error in get_response: {str(e)}")
+        raise
 
 
 def get_keywords(input_text):
@@ -55,6 +83,7 @@ def get_keywords(input_text):
         "system",
         """ you are system that helps to extract main keywords from the user query.
         output should be a list of keywords that are extracted from the user query without brackets.
+        note important: Avoid using technical formatting like new line symbols, markdown symbols *, _, etc., or bullet points.
         """,
     ),
     (
@@ -64,11 +93,14 @@ def get_keywords(input_text):
 ])
         chain = prompt | llm
         response = chain.invoke({"input": input_text})
+        global wordings
+        wordings +=response.content
+        if len(wordings) > 100:
+            wordings = wordings[20:]
+
         global keywords
-        keywords +=response.content
-        if len(keywords) > 50:
-            keywords = keywords[10:]
-        return response.content
+        keywords = user_intent(wordings)
+        return keywords
         
     except Exception as e:
         print(f"Error in get_response: {str(e)}")
@@ -117,49 +149,7 @@ def get_product_search(query):
         "index": "vx",
         }}
     ])
-    print("this is results")
     return convert_to_json(results)
-
-def get_response(input_text):
-    try:
-
-        prompt = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        """Use the following step-by-step instructions to respond to user inputs.
-
-        Step 1 - Identify the customer's request <specific product, recommendation, or general inquiry>.
-
-        Step 2 - Respond in a short, direct manner <maximum 1-2 brief sentences> with only the most relevant information. and max tokens 20
-
-        Step 3 - Avoid unnecessary details or extra recommendations unless explicitly asked.
-
-        Step 4 - Keep the response clear, friendly, and free of special formatting.
-
-        Remember to maintain context from the conversation history: {history}
-
-        Deliver responses in plain text with minimal wording like a chatbots reply.
-        """,
-    ),
-    (
-        "human",
-        "{input}"
-    ),
-])
-
-
-        chain = LLMChain(
-            llm=llm,
-            prompt=prompt,
-            memory=memory,
-        )
-
-        response = chain.invoke({"input": input_text})
-        return response['text']
-        
-    except Exception as e:
-        print(f"Error in get_response: {str(e)}")
-        raise
 
 
 def get_response_product_search(input_text,related_products):
@@ -239,45 +229,6 @@ def get_availability(input_text):
 # Store chat history
 chat_history = []
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    try:
-        message = request.json
-        message.update({
-            'timestamp': datetime.now().isoformat(),
-            'id': len(chat_history)
-        })
-        chat_history.append(message)
-
-
-        search_keywords = get_keywords(message['content'])
-
-        query = f"user query : {message['content']} and extracted keywords from user query:{search_keywords}"
-
-        related_products_for_query,forai = get_product_search(query) 
-
-        ai_response = get_response(input_text = message['content'])
-        response = {
-            'content': ai_response,
-            'sender': 'bot',
-            'timestamp': datetime.now().isoformat(),
-            'id': len(chat_history),
-            'related_products_for_query':related_products_for_query
-        }
-
-        chat_history.append(response)
-        
-        return jsonify(response)
-    
-    except Exception as e:
-        error_response = {
-            'error_response': str(e),
-            'content': "I apologize, but I encountered an error. Please try again.",
-            'sender': 'bot',
-            # 'error': True,
-            'timestamp': datetime.now().isoformat()
-        }
-        return jsonify(error_response), 500
     
 @app.route('/check-availability', methods=['POST'])
 def check_availability():
@@ -291,10 +242,12 @@ def check_availability():
         
 
         search_keywords = get_keywords(message['content'])
+        print(keywords)
 
         squery = f"user query : {message['content']} and extracted keywords from user query:{search_keywords}"
 
-        related_products_for_query,forai = get_product_search(squery) 
+        # related_products_for_query,forai = get_product_search(squery) 
+        related_products_for_query,forai = get_product_search(search_keywords)
 
         query = f"user query : {message['content']} and related products based on user query:{str(forai)}"
 
@@ -335,8 +288,10 @@ def chat_product_search():
         search_keywords = get_keywords(message['content'])
         print(keywords)
         squery = f"user query : {message['content']} and extracted keywords from user query:{keywords}"
+        print(squery)
 
-        related_products_for_query,forai = get_product_search(squery)
+        # related_products_for_query,forai = get_product_search(squery)
+        related_products_for_query,forai = get_product_search(search_keywords)
 
         ai_response = get_response_product_search(input_text = message['content'], related_products = str(forai))
         
