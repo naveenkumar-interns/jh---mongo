@@ -113,7 +113,8 @@ def get_product_search(query):
         "path": "embeddings",
         "numCandidates": 100,
         "limit": 4,
-        "index": "vector_search_index",
+        # "index": "vector_search_index",
+        "index": "vx",
         }}
     ])
     print("this is results")
