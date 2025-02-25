@@ -33,8 +33,6 @@ llm = ChatGoogleGenerativeAI(
 keywords = ""
 wordings = ""
 
-memory = ConversationBufferWindowMemory(return_messages=True, k=2)
-
 
 embedding_cache ={}
 
@@ -172,11 +170,8 @@ def get_response_product_search(input_text,related_products):
     ("human", "{input}"),
 ])
 
-        chain = LLMChain(
-            llm=llm,
-            prompt=prompt,
-            memory=memory,
-        )
+        chain = prompt | llm
+
         query = f"user query : {input_text} and related products based on user query:{str(related_products)}"
         response = chain.invoke({"input": query})
         return response['text']
@@ -212,11 +207,7 @@ def get_availability(input_text):
 
 
 
-        chain = LLMChain(
-            llm=llm,
-            prompt=prompt,
-            memory=memory,
-        )
+        chain = prompt | llm
 
         response = chain.invoke({"input": input_text})
         return response['text']
@@ -326,7 +317,6 @@ def get_chat_history():
 def clear_chat():
     try:
         chat_history.clear()
-        memory.clear()
         return jsonify({"message": "Chat history cleared successfully"})
     except Exception as e:
         return jsonify({"error": "Failed to clear chat history"}), 500
@@ -334,10 +324,6 @@ def clear_chat():
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({"message": "working"})
-
-# if __name__ == "__main__":
-#     port = int(os.environ.get("PORT", 10000))  # Render assigns a dynamic port
-#     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     app.run(debug=True)
